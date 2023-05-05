@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  app:
+    image: 'node:14.20.0'
+    working_dir: /app
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    command: sh -c "npm install && npm start"

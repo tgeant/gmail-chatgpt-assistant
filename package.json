@@ -1,0 +1,26 @@
+{
+  "name": "gmail-chatgpt-assistant",
+  "version": "1.0.0",
+  "description": "This is a simple gmail assistant application that reads incoming emails, processes them using the OpenAI GPT-3.5 API, and sends responses. It uses Node.js, IMAP for reading emails, Nodemailer for sending emails, and the OpenAI API for natural language processing.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tgeant/gmail-chatgpt-assistant.git"
+  },
+  "author": "Votre Nom",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/tgeant/gmail-chatgpt-assistant/issues"
+  },
+  "homepage": "https://github.com/tgeant/gmail-chatgpt-assistant#readme",
+  "dependencies": {
+    "axios": "^1.4.0",
+    "dotenv": "^16.0.3",
+    "imap": "^0.8.19",
+    "mailparser": "^3.6.4",
+    "nodemailer": "^6.9.1"
+  }
+}
