@@ -28,11 +28,29 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+//TODO: extract history with HTML
 // Function to extract email conversation from the email content
 function extractEmailHistory(emailContent) {
-  const emailAddress = process.env.EMAIL_USER;
-  const regex = new RegExp(`.*<${emailAddress}>.*:`, 'i');
-  return  emailContent.split(regex);
+  const regex = /.*\<(.*@.*)>.*:/gi;
+  const messagesArray = emailContent.split(regex);
+  const messagesWithRole = [];
+
+  for (let i = messagesArray.length - 1; i >= 0; i--) {
+    const messageContent = messagesArray[i].replace(/>\s*/g, '').trim();
+
+    // Vérifier si l'email correspond à process.env.EMAIL_USER
+    let currentRole;
+    if (i > 0) {
+      const email = messagesArray[i - 1].match(/(.*@.*)/);
+      currentRole = email && email[0] === process.env.EMAIL_USER ? "assistant" : "user";
+    } else {
+      currentRole = "user";
+    }
+
+    messagesWithRole.push({ "role": currentRole, "content": messageContent });
+  }
+
+  return messagesWithRole;
 }
 
 
@@ -47,12 +65,13 @@ async function processEmail(email) {
   // Create prompts for the API
   const prompts = [
     { "role": "system", "content": process.env.SYSTEM_PROMPT },
-    { "role": "user", "content": messages[0] },
+    ...messages,
   ];
 
   try {
     // Call the API with prompts
     const apiResponse = await callAPIChatGPT(prompts);
+
 
     // Create response email
     const mailOptions = {
@@ -74,6 +93,7 @@ async function processEmail(email) {
     console.error('Error processing email:', error);
   }
 }
+
 
 // Function to fetch unread emails
 function fetchUnreadEmails() {
