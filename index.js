@@ -1,5 +1,4 @@
 const Imap = require('imap');
-const axios = require('axios');
 const { simpleParser } = require('mailparser');
 const nodemailer = require('nodemailer');
 
@@ -29,14 +28,26 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+// Function to extract email conversation from the email content
+function extractEmailHistory(emailContent) {
+  const emailAddress = process.env.EMAIL_USER;
+  const regex = new RegExp(`.*<${emailAddress}>.*:`, 'i');
+  return  emailContent.split(regex);
+}
+
+
 // Function to process and respond to emails
 async function processEmail(email) {
   console.log("Processing email:", email.subject);
 
+  let messageContent = email.text || email.html;
+  
+  let messages = extractEmailHistory(messageContent);
+
   // Create prompts for the API
   const prompts = [
     { "role": "system", "content": process.env.SYSTEM_PROMPT },
-    { "role": "user", "content": email.text || email.html },
+    { "role": "user", "content": messages[0] },
   ];
 
   try {
