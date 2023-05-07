@@ -1,29 +1,22 @@
+// Libraries
 const Imap = require('imap');
 const { simpleParser } = require('mailparser');
 const nodemailer = require('nodemailer');
-const replyParser = require('node-email-reply-parser');
 
+// Config
 require('dotenv').config();
-
-// fetching the email thread
-const fetchThread = require('./fetchThread');
-const { getThreadIdFromMessageId } = require('./getThreadId');
+const imapConfig = require('./imapConfig');
 
 // chatGPT
-const callAPIChatGPT = require('./openai');
+const callAPIChatGPT = require('./openai/openai');
 
+// Import functions for emailProcessing
+const fetchThread = require('./emailProcessingUtils/fetchThread');
+const { getThreadIdFromMessageId } = require('./emailProcessingUtils/getThreadId');
+const { historyMessageToMessagesWithRoles } = require('./emailProcessingUtils/gmailParser');
 
 // IMAP configuration
-const imap = new Imap({
-  user: process.env.EMAIL_USER,
-  password: process.env.EMAIL_PASS,
-  host: 'imap.gmail.com',
-  port: 993,
-  tls: true,
-  tlsOptions: {
-    rejectUnauthorized: false,
-  },
-});
+const imap = new Imap(imapConfig);
 
 // Email transporter configuration
 const transporter = nodemailer.createTransport({
@@ -34,110 +27,73 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-function emailToRole(emailAdress){
-  return emailAdress === process.env.EMAIL_USER ? 'assistant' : 'user';
-}
-
-function extractEmailFromFirstLine(text) {
-  const firstLine = text.split('\n')[0];
-  const regex = /<([^>]+)>/;
-  const match = firstLine.match(regex);
-
-  if (match) {
-    return match[1];
-  }
-
-  return null;
-}
-
-function cleanReplyText(text) {
-  const lines = text.split('\n');
-  lines.shift(); // Remove the first line
-
-  const cleanedLines = lines.map(line => line.replace(/^>\s*/, ''));
-
-  return cleanedLines.join('\n');
-}
-
-function historyMessageToMessagesWithRoles(msg) {
-  let emailContent = msg.content;
-  let reply = replyParser(emailContent);
-  console.log(JSON.stringify(reply));
-
-  let firstQuotedFragment = reply.getFragments().find(fragment => fragment._isQuoted);
-  let firstQuotedContent = firstQuotedFragment ? firstQuotedFragment._content : null;
-
-  let visibleResponse = {"role": emailToRole(msg.from), "content":reply.getVisibleText()};
-  let result = [visibleResponse];
-
-  if (firstQuotedContent) {
-    let mailFirstQuote = extractEmailFromFirstLine(firstQuotedContent);
-    result.unshift({"role": mailFirstQuote ? emailToRole(mailFirstQuote) : 'assistant', "content":cleanReplyText(firstQuotedContent)});
-  }
-
-  return result;
-}
-
 
 // Function to process and respond to emails
 async function processEmail(email) {
-  console.log("Processing email:", email.subject);
+  console.log("Processing email with subject:", email.subject);
 
   let messageContent = email.text || email.html;
   let messageId = email.messageId;
 
   let messages = [];
 
+  // Check if the email has a messageId and fetch the thread history
   if (messageId) {
     let threadId = await getThreadIdFromMessageId(messageId);
 
+    // If a threadId is found, fetch the thread history
     if (threadId) {
-      console.log("threadId: " + threadId);
       let history = await fetchThread(threadId);
-      console.log("history: " + JSON.stringify(history));
 
+      // Process each history message and add it to the messages array
       for (const historyMessage of history) {
         const newMessages = historyMessageToMessagesWithRoles(historyMessage);
         messages.push(...newMessages);
       }
+    } else {
+      // If there's no threadId, create a user message with the email content
+      messages.push({ "role": "user", "content": deleteReplyQuotation(messageContent) });
     }
   } else {
+    // If there's no messageId, create a user message with the email content
     messages.push({ "role": "user", "content": deleteReplyQuotation(messageContent) });
   }
 
 
-  // Create prompts for the API
+  // Create prompts for the GPT-3.5 Chat API
   const prompts = [
     { "role": "system", "content": process.env.SYSTEM_PROMPT },
     ...messages,
   ];
 
-  console.log(JSON.stringify(prompts));
-
   try {
-    // Call the API with prompts
+    // Call the GPT-3.5 Chat API with the prompts
+    console.log("Requesting response from GPT-3.5 Chat API");
     const apiResponse = await callAPIChatGPT(prompts);
 
-    // Create response email
+    // Create the response email
+    let subj = `RE: ${email.subject}`;
     const mailOptions = {
       from: process.env.EMAIL_USER,
       to: email.from.value[0].address,
-      subject: `RE: ${email.subject}`,
+      subject: subj,
       text: apiResponse,
     };
 
-    // Send response email
+    // Send the response email
+    console.log("Sending response email with subject:", subj);
     transporter.sendMail(mailOptions, (error, info) => {
       if (error) {
-        console.error('Error sending email:', error);
+        console.error('Error while sending the email:', error);
       } else {
-        console.log('Email sent successfully:', info.response);
+        console.log('Response email sent successfully:', info.response);
       }
     });
   } catch (error) {
-    console.error('Error processing email:', error);
+    console.error('Error encountered while processing the email:', error);
   }
 }
+
 
 
 // Function to fetch unread emails

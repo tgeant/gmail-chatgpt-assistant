@@ -1,6 +1,6 @@
 {
   "name": "gmail-chatgpt-assistant",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "This is a simple gmail assistant application that reads incoming emails, processes them using the OpenAI GPT-3.5 API, and sends responses. It uses Node.js, IMAP for reading emails, Nodemailer for sending emails, and the OpenAI API for natural language processing.",
   "main": "index.js",
   "scripts": {

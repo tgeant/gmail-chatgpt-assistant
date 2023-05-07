@@ -1,39 +1,41 @@
+// Libraries
 const Imap = require('imap');
-require('dotenv').config();
 
-const imap = new Imap({
-  user: process.env.EMAIL_USER,
-  password: process.env.EMAIL_PASS,
-  host: 'imap.gmail.com',
-  port: 993,
-  tls: true,
-  tlsOptions: {
-    rejectUnauthorized: false,
-  },
-});
+// Config
+const imapConfig = require('../imapConfig');
 
+// IMAP configuration
+const imap = new Imap(imapConfig);
+
+// Function to get the thread ID from a message ID
 async function getThreadIdFromMessageId(messageId) {
   return new Promise((resolve, reject) => {
+    // When the IMAP connection is ready, open the inbox
     imap.once('ready', function () {
       imap.openBox('INBOX', true, async function (err, box) {
         if (err) reject(err);
 
+        // Search for the message with the given messageId
         imap.search([['HEADER', 'MESSAGE-ID', messageId]], async function (err, results) {
           if (err) reject(err);
 
+          // Fetch the message with the matching messageId
           const f = imap.fetch(results, { bodies: '' });
 
           f.on("message", async function (msg, seqno) {
+            // Extract the threadId from the message attributes
             msg.on("attributes", function (attrs) {
               const threadId = attrs["x-gm-thrid"];
               resolve(threadId);
             });
           });
 
+          // Handle fetch errors
           f.once('error', function (err) {
             reject('Fetch error: ' + err);
           });
 
+          // Close the IMAP connection when the fetch is complete
           f.once('end', function () {
             imap.end();
           });
@@ -41,18 +43,17 @@ async function getThreadIdFromMessageId(messageId) {
       });
     });
 
+    // Handle IMAP connection errors
     imap.once('error', function (err) {
       reject(err);
     });
 
-    imap.once('end', function () {
-      console.log('Connection ended (getThreadId)');
-    });
-
+    // Connect to the IMAP server
     imap.connect();
   });
 }
 
+// Export the getThreadIdFromMessageId function
 module.exports = {
   getThreadIdFromMessageId
 };
