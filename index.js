@@ -7,6 +7,7 @@ require('dotenv').config();
 
 // fetching the email thread
 const fetchThread = require('./fetchThread');
+const { getThreadIdFromMessageId } = require('./getThreadId');
 
 // chatGPT
 const callAPIChatGPT = require('./openai');
@@ -33,46 +34,43 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-
-async function getThreadIdFromStream(parsedEmail) {
-  try {
-    const threadId = parsedEmail.headers.get('x-gm-thrid');
-    return threadId;
-  } catch (err) {
-    console.error(err);
-    return null;
-  }
-}
-
-// Function to extract email conversation from the email content
-function extractEmailHistory(emailContent) {
+function deleteReplyQuotation(emailContent) {
 
   let reply = replyParser(emailContent);
 
-  console.log("JSON REPLY:\n"+JSON.stringify(reply));
+  console.log(JSON.stringify(reply));
 
-  const messagesWithRole = [];
-    messagesWithRole.push({ "role": "user", "content": reply.getFragments()[0] });
-    return messagesWithRole;
+  //reply.getFragments()[0]._content;
+  let result = reply.getVisibleText();
+  return result;
 }
-
 
 // Function to process and respond to emails
 async function processEmail(email) {
   console.log("Processing email:", email.subject);
 
-  console.log(JSON.stringify(email));
-
   let messageContent = email.text || email.html;
+  let messageId = email.messageId;
 
-  let threadId = await getThreadIdFromStream(email);
+  let messages = [];
 
-  if(threadId!=null){
-    fetchThread(threadId);
-    console.log("threadId: "+threadId);
+  if (messageId) {
+    let threadId = await getThreadIdFromMessageId(messageId);
+
+    if (threadId) {
+      console.log("threadId: " + threadId);
+      history = await fetchThread(threadId);
+      console.log("history: " + JSON.stringify(history));
+
+      for (const message of history) {
+        let role = message.from === process.env.EMAIL_USER ? 'assistant' : 'user';
+        let content = deleteReplyQuotation(message.content);
+        messages.push({ role, content });
+      }
+    }
+  } else {
+    messages.push({ "role": "user", "content": deleteReplyQuotation(messageContent) });
   }
-  
-  let messages = extractEmailHistory(messageContent);
 
 
   // Create prompts for the API
@@ -80,6 +78,8 @@ async function processEmail(email) {
     { "role": "system", "content": process.env.SYSTEM_PROMPT },
     ...messages,
   ];
+
+  console.log(JSON.stringify(prompts));
 
   try {
     // Call the API with prompts

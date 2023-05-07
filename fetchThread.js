@@ -37,7 +37,12 @@ async function fetchThread(threadId) {
             msg.on('body', async function (stream, info) {
               try {
                 const parsed = await simpleParser(stream);
-                threadArray.push(parsed.text);
+
+                const msg = {
+                  from: parsed.from.value[0].address,
+                  content: parsed.text
+                }
+                threadArray.push(msg);
               } catch (err) {
                 reject(err);
               } finally {
@@ -62,7 +67,7 @@ async function fetchThread(threadId) {
     });
 
     imap.once('end', function () {
-      console.log('Connection ended');
+      console.log('Connection ended (fetchThread)');
     });
 
     imap.connect();
