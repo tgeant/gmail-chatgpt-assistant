@@ -5,7 +5,7 @@ require('dotenv').config();
 
 (async () => {
   try {
-    const threadId = '1765187358747221460';
+    const threadId = '1765231660402334219';
     const threadArray = await fetchThread(threadId);
     console.log(JSON.stringify(threadArray));
   } catch (error) {

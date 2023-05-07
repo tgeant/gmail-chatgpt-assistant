@@ -5,8 +5,12 @@ const replyParser = require('node-email-reply-parser');
 
 require('dotenv').config();
 
+// fetching the email thread
+const fetchThread = require('./fetchThread');
+
 // chatGPT
 const callAPIChatGPT = require('./openai');
+
 
 // IMAP configuration
 const imap = new Imap({
@@ -29,7 +33,17 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-//TODO: extract history with HTML
+
+async function getThreadIdFromStream(parsedEmail) {
+  try {
+    const threadId = parsedEmail.headers.get('x-gm-thrid');
+    return threadId;
+  } catch (err) {
+    console.error(err);
+    return null;
+  }
+}
+
 // Function to extract email conversation from the email content
 function extractEmailHistory(emailContent) {
 
@@ -47,9 +61,19 @@ function extractEmailHistory(emailContent) {
 async function processEmail(email) {
   console.log("Processing email:", email.subject);
 
-  let messageContent = email.text; // || email.html;
+  console.log(JSON.stringify(email));
+
+  let messageContent = email.text || email.html;
+
+  let threadId = await getThreadIdFromStream(email);
+
+  if(threadId!=null){
+    fetchThread(threadId);
+    console.log("threadId: "+threadId);
+  }
   
   let messages = extractEmailHistory(messageContent);
+
 
   // Create prompts for the API
   const prompts = [
@@ -60,7 +84,6 @@ async function processEmail(email) {
   try {
     // Call the API with prompts
     const apiResponse = await callAPIChatGPT(prompts);
-
 
     // Create response email
     const mailOptions = {
