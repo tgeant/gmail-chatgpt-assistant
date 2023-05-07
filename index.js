@@ -1,24 +1,22 @@
+// Libraries
 const Imap = require('imap');
-const axios = require('axios');
 const { simpleParser } = require('mailparser');
 const nodemailer = require('nodemailer');
 
+// Config
 require('dotenv').config();
+const imapConfig = require('./imapConfig');
 
 // chatGPT
-const callAPIChatGPT = require('./openai');
+const callAPIChatGPT = require('./openai/openai');
+
+// Import functions for emailProcessing
+const fetchThread = require('./emailProcessingUtils/fetchThread');
+const { getThreadIdFromMessageId } = require('./emailProcessingUtils/getThreadId');
+const { historyMessageToMessagesWithRoles } = require('./emailProcessingUtils/gmailParser');
 
 // IMAP configuration
-const imap = new Imap({
-  user: process.env.EMAIL_USER,
-  password: process.env.EMAIL_PASS,
-  host: 'imap.gmail.com',
-  port: 993,
-  tls: true,
-  tlsOptions: {
-    rejectUnauthorized: false,
-  },
-});
+const imap = new Imap(imapConfig);
 
 // Email transporter configuration
 const transporter = nodemailer.createTransport({
@@ -29,40 +27,74 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+
 // Function to process and respond to emails
 async function processEmail(email) {
-  console.log("Processing email:", email.subject);
+  console.log("Processing email with subject:", email.subject);
 
-  // Create prompts for the API
+  let messageContent = email.text || email.html;
+  let messageId = email.messageId;
+
+  let messages = [];
+
+  // Check if the email has a messageId and fetch the thread history
+  if (messageId) {
+    let threadId = await getThreadIdFromMessageId(messageId);
+
+    // If a threadId is found, fetch the thread history
+    if (threadId) {
+      let history = await fetchThread(threadId);
+
+      // Process each history message and add it to the messages array
+      for (const historyMessage of history) {
+        const newMessages = historyMessageToMessagesWithRoles(historyMessage);
+        messages.push(...newMessages);
+      }
+    } else {
+      // If there's no threadId, create a user message with the email content
+      messages.push({ "role": "user", "content": deleteReplyQuotation(messageContent) });
+    }
+  } else {
+    // If there's no messageId, create a user message with the email content
+    messages.push({ "role": "user", "content": deleteReplyQuotation(messageContent) });
+  }
+
+
+  // Create prompts for the GPT-3.5 Chat API
   const prompts = [
     { "role": "system", "content": process.env.SYSTEM_PROMPT },
-    { "role": "user", "content": email.text || email.html },
+    ...messages,
   ];
 
   try {
-    // Call the API with prompts
+    // Call the GPT-3.5 Chat API with the prompts
+    console.log("Requesting response from GPT-3.5 Chat API");
     const apiResponse = await callAPIChatGPT(prompts);
 
-    // Create response email
+    // Create the response email
+    let subj = `RE: ${email.subject}`;
     const mailOptions = {
       from: process.env.EMAIL_USER,
       to: email.from.value[0].address,
-      subject: `RE: ${email.subject}`,
+      subject: subj,
       text: apiResponse,
     };
 
-    // Send response email
+    // Send the response email
+    console.log("Sending response email with subject:", subj);
     transporter.sendMail(mailOptions, (error, info) => {
       if (error) {
-        console.error('Error sending email:', error);
+        console.error('Error while sending the email:', error);
       } else {
-        console.log('Email sent successfully:', info.response);
+        console.log('Response email sent successfully:', info.response);
       }
     });
   } catch (error) {
-    console.error('Error processing email:', error);
+    console.error('Error encountered while processing the email:', error);
   }
 }
+
+
 
 // Function to fetch unread emails
 function fetchUnreadEmails() {
