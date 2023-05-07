@@ -21,6 +21,7 @@
     "dotenv": "^16.0.3",
     "imap": "^0.8.19",
     "mailparser": "^3.6.4",
+    "node-email-reply-parser": "^0.1.4",
     "nodemailer": "^6.9.1"
   }
 }

@@ -1,6 +1,7 @@
 const Imap = require('imap');
 const { simpleParser } = require('mailparser');
 const nodemailer = require('nodemailer');
+const replyParser = require('node-email-reply-parser');
 
 require('dotenv').config();
 
@@ -31,26 +32,14 @@ const transporter = nodemailer.createTransport({
 //TODO: extract history with HTML
 // Function to extract email conversation from the email content
 function extractEmailHistory(emailContent) {
-  const regex = /.*\<(.*@.*)>.*:/gi;
-  const messagesArray = emailContent.split(regex);
+
+  let reply = replyParser(emailContent);
+
+  console.log("JSON REPLY:\n"+JSON.stringify(reply));
+
   const messagesWithRole = [];
-
-  for (let i = messagesArray.length - 1; i >= 0; i--) {
-    const messageContent = messagesArray[i].replace(/>\s*/g, '').trim();
-
-    // Vérifier si l'email correspond à process.env.EMAIL_USER
-    let currentRole;
-    if (i > 0) {
-      const email = messagesArray[i - 1].match(/(.*@.*)/);
-      currentRole = email && email[0] === process.env.EMAIL_USER ? "assistant" : "user";
-    } else {
-      currentRole = "user";
-    }
-
-    messagesWithRole.push({ "role": currentRole, "content": messageContent });
-  }
-
-  return messagesWithRole;
+    messagesWithRole.push({ "role": "user", "content": reply.getFragments()[0] });
+    return messagesWithRole;
 }
 
 
@@ -58,7 +47,7 @@ function extractEmailHistory(emailContent) {
 async function processEmail(email) {
   console.log("Processing email:", email.subject);
 
-  let messageContent = email.text || email.html;
+  let messageContent = email.text; // || email.html;
   
   let messages = extractEmailHistory(messageContent);
 
