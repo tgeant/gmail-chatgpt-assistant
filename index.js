@@ -34,16 +34,50 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-function deleteReplyQuotation(emailContent) {
+function emailToRole(emailAdress){
+  return emailAdress === process.env.EMAIL_USER ? 'assistant' : 'user';
+}
 
+function extractEmailFromFirstLine(text) {
+  const firstLine = text.split('\n')[0];
+  const regex = /<([^>]+)>/;
+  const match = firstLine.match(regex);
+
+  if (match) {
+    return match[1];
+  }
+
+  return null;
+}
+
+function cleanReplyText(text) {
+  const lines = text.split('\n');
+  lines.shift(); // Remove the first line
+
+  const cleanedLines = lines.map(line => line.replace(/^>\s*/, ''));
+
+  return cleanedLines.join('\n');
+}
+
+function historyMessageToMessagesWithRoles(msg) {
+  let emailContent = msg.content;
   let reply = replyParser(emailContent);
-
   console.log(JSON.stringify(reply));
 
-  //reply.getFragments()[0]._content;
-  let result = reply.getVisibleText();
+  let firstQuotedFragment = reply.getFragments().find(fragment => fragment._isQuoted);
+  let firstQuotedContent = firstQuotedFragment ? firstQuotedFragment._content : null;
+
+  let visibleResponse = {"role": emailToRole(msg.from), "content":reply.getVisibleText()};
+  let result = [visibleResponse];
+
+  if (firstQuotedContent) {
+    let mailFirstQuote = extractEmailFromFirstLine(firstQuotedContent);
+    result.unshift({"role": mailFirstQuote ? emailToRole(mailFirstQuote) : 'assistant', "content":cleanReplyText(firstQuotedContent)});
+  }
+
   return result;
 }
+
 
 // Function to process and respond to emails
 async function processEmail(email) {
@@ -59,13 +93,12 @@ async function processEmail(email) {
 
     if (threadId) {
       console.log("threadId: " + threadId);
-      history = await fetchThread(threadId);
+      let history = await fetchThread(threadId);
       console.log("history: " + JSON.stringify(history));
 
-      for (const message of history) {
-        let role = message.from === process.env.EMAIL_USER ? 'assistant' : 'user';
-        let content = deleteReplyQuotation(message.content);
-        messages.push({ role, content });
+      for (const historyMessage of history) {
+        const newMessages = historyMessageToMessagesWithRoles(historyMessage);
+        messages.push(...newMessages);
       }
     }
   } else {
